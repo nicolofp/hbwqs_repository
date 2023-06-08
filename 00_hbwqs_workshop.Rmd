@@ -1,0 +1,331 @@
+---
+title: "HBWQS workshop"
+author: "*Colicino Lab*"
+date: "`r weekdays(Sys.Date())`, `r as.numeric(format(Sys.Date(),'%d'))`^`r ifelse(as.numeric(format(Sys.Date(), '%d')) %in% c(1,21,31),'st',ifelse(as.numeric(format(Sys.Date(), '%d')) %in% c(2,22),'nd',ifelse(as.numeric(format(Sys.Date(), '%d')) %in% c(3,23),'rd','th')))`^ `r format(Sys.Date(),'%B %Y')`"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+    number_sections: true
+---
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(fig.align = "center")
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+library(data.table)
+library(ggplot2)
+library(kableExtra)
+library(BWQS)
+library(rstan)
+library(MASS)
+library(fastDummies)
+```
+
+# Synthetic dataset
+
+**Dataset Name**: Birth weight z-score and urinary metal mixture dataset
+
+**Description**: The birth weight z-score and urinary metal mixture dataset is a synthetic dataset consisting of information related to birth weight z-scores and the presence of various metals detected in urine samples, along with additional demographic and health-related factors. The dataset is divided into two separate cohorts to represent different groups or populations.
+
+**Variables**:
+
+1. *Birth Weight Z-Score*: A continuous variable representing the standardized birth weight, calculated relative to a reference population. This variable is the outcome of the analysis.
+
+2. *Metals Detected in Urine*: A set of continuous variables (quartiles) indicating the levels of different metals detected in urine samples. This include  lead, cadmium, arsenic, and others. Each metal will have its own measure.
+
+3. *Biological Sex*: A categorical variable indicating the biological sex of the newborn, with two categories: male and female.
+
+4. *Race and Ethnicity*: A categorical variable representing the race and ethnicity of the mother or newborn, including categories such as White, Black, Hispanic, and others.
+
+5. *Education*: A binary variable representing the educational attainment level of the mother, with categories such as High School or Less and Some College and more.
+
+6. *Creatinine Levels*: A continuous variable (log2-transformed) representing the concentration of creatinine in urine samples, which serves as a biomarker for kidney function.
+
+7. *Age of the Mother at Birth*: A continuous variable indicating the age of the mother at the time of childbirth, represented in years.
+
+8. *Parity*: A categorical variable indicating the number of previous live births the mother has had, with categories Nulliparous (no previous live births) and Non-Nulliparous (one or more previous live births).
+
+**Cohorts**:
+The dataset is split into two separate cohorts:
+
++ *Cohort 1*: Represents a specific population or group (N = 310), such as individuals from a particular geographic region or with certain characteristics. This cohort includes a subset of the overall dataset, with a specific distribution of variables and outcomes.
+
++ *Cohort 2*: Represents another population or group (N = 213), distinct from Cohort A. This cohort may have different characteristics, demographics, or outcomes compared to Cohort A, reflecting the diversity of the overall dataset.
+
+> **<span style="color: red;">Please note that this description represents a hypothetical synthetic dataset, and the specific distributions, sample sizes, and relationships between variables would need to be defined during the data generation process based on the research objectives and population characteristics of interest</span>**
+
+Generate synthetic dataset:
+
+```{r dataset_synthetic}
+set.seed(1990)
+N = 523
+mm = c(3.5241692,-2.5685797,-0.9273994)
+ms = matrix(c(1.9424099,0.3782875,0.2538536,0.3782875,1.6962457,
+              0.7863508,0.2538536,0.7863508,1.0869435),nrow = 3,byrow = T)
+metals_sim = data.table(2^mvrnorm(N, mu = mm, Sigma = ms))
+setnames(metals_sim, names(metals_sim), c("UAs","UCd","UPb"))
+cols_metals = c("UAs","UCd","UPb")
+metals_sim[,c("UAs_q","UCd_q","UPb_q") := lapply(.SD, function(i){
+  ecdf(i)(i)*4
+}), .SDcols = cols_metals]
+
+covariates_sim = data.table(race_eth = sample(1:4,N,replace = T, c(0.35,0.25,0.25,0.15)),
+                            log2_creatinine = rnorm(N,9,0.8),
+                            age_birth = ((44-18) * rbeta(N,2,2) + 18),
+                            parity = sample(0:1,N,replace = T, c(0.38,0.62)),
+                            childsex = sample(0:1,N,replace = T),
+                            educ_low = sample(0:1,N,replace = T, c(0.7,0.3)),
+                            cohort =c(rep(1,310),rep(2,213)))
+
+covariates_sim = dummy_cols(covariates_sim, select_columns = c("race_eth"))
+# 1: white --> remove it in the formula, it's the reference 
+# 2: black_hispblack
+# 3: hispanic_noblack
+# 4: others
+
+DT = data.table(metals_sim,covariates_sim)
+
+w = c(0.2,0.3,0.5)
+b01 = 0.012 
+b11 = -0.83
+b02 = -0.082 
+b12 = -0.34
+d = c(0.25,   # creatinine
+      -0.05,  # age_birth      
+      0.5,    # parity
+      0.12,   # sex
+      -0.5,   # educ_low
+      0.01,   # race 1
+      -0.28,  # race 2
+      -0.41,  # race 3
+      -0.11)  # race 4
+y1 = b01 + b11 * as.matrix(DT[cohort == 1, .(UAs_q,UCd_q,UPb_q)]) %*% w + 
+  as.matrix(DT[cohort == 1, .(log2_creatinine,age_birth,parity,
+                              childsex,educ_low,race_eth_2,race_eth_3,
+                              race_eth_4)]) %*% d[-6] + rnorm(310,0,0.2) 
+y2 = b02 + b12 * as.matrix(DT[cohort == 2, .(UAs_q,UCd_q,UPb_q)]) %*% w + 
+  as.matrix(DT[cohort == 2, .(log2_creatinine,age_birth,parity,
+                              childsex,educ_low,race_eth_2,race_eth_3,
+                              race_eth_4)]) %*% d[-6] + rnorm(213,0,0.2)
+DT$y = c(y1,y2)
+head(DT[,.(y,UAs_q,UCd_q,UPb_q,race_eth,log2_creatinine,
+           age_birth,parity,childsex,educ_low,cohort)])
+```
+
+# HBWQS model 
+
+$$\begin{gather*} 
+Y_{i} \sim \mathcal{N}( \alpha_{j[i]} + \beta_{j[i]}BWQS_{i} + \gamma Z_{i}, \sigma_c) \quad where  \quad BWQS_{i} =  \sum_{k=1}^K x_{ik}w_k \\ 
+\alpha \sim \mathcal{N}( \mu_{\alpha},\sigma_{\alpha}), \quad \beta \sim \mathcal{N}( \mu_{\beta},\sigma_{\beta}) \quad where: \\  \begin{pmatrix} \mu_{\alpha} \\ \mu_{\beta} \end{pmatrix}  \sim \mathcal{N}_2\left( \begin{pmatrix} 0 \\ 0 \end{pmatrix}, \begin{bmatrix} 100 && 0 \\ 0 && 100 \end{bmatrix}  \right) \quad and  \quad  \sigma_{\alpha},\sigma_{\beta} \sim \mathcal{IG}(0.01,0.01) \\ 
+\sigma_c \sim \mathcal{IG}(0.01,0.01), \quad w \sim \mathcal{Dir}_k((1,\ldots,1)) \quad and  \quad \gamma \sim \mathcal{N}_{z} \left( \begin{pmatrix} 0 \\ \vdots \\ 0 \end{pmatrix} ,\begin{bmatrix} 100 && \\ & \ddots & \\ && 100 \end{bmatrix} \right) \
+\end{gather*}$$
+
+Notation:
+
++ $i = 1, \ldots,N$ is the number of total observations
++ $j = 1, \ldots,J$ is the number of total cohorts
++ $j[i]$ defines the cohort effect for each observation (random terms)
++ $K$ number of chemicals involved in the mixture
++ $Z$ number of covariates
++ $\mathcal{IG}$ is a [Inverse Gamma Distribution](https://en.wikipedia.org/wiki/Inverse-gamma_distribution)
++ $\mathcal{Dir}_k$ is a [Dirichlet Distribution](https://en.wikipedia.org/wiki/Dirichlet_distribution) parametrized by a k-dimensional vector of 1  
++ $\mathcal{N}_z$ is a z-dimensional [Multivariate Normal Distibution](https://en.wikipedia.org/wiki/Multivariate_normal_distribution)
+
+Here the code to run the model based on the dataset that we built:
+
+```{r fig.align="center",fig.width=12,fig.height=6}
+a = Sys.time()
+tmp_pkg = bwqs_r(formula = y ~ log2_creatinine + age_birth + parity + childsex +
+                   educ_low + race_eth_2 + race_eth_3 + race_eth_4,
+                 mix_name = c("UAs_q","UCd_q","UPb_q") ,
+                 cluster_name = "cohort",
+                 data = DT,
+                 q = NULL,
+                 Dalp = c(1,1,1),
+                 chains = 1,
+                 iter = 1000,
+                 thin = 1,
+                 seed = 123,
+                 c_int = c(0.025, 0.975),
+                 family = "gaussian")
+b = Sys.time()
+```
+
+The code takes `r round(b-a)` mins to run, this time (based on the same chain number, length and thinning parameters) can vary based on multiple parameters like data distribution, starting values, prior distributions and size of the dataset. 
+
+```{r hbwqs_results}
+table_res = cbind(real_value = c(w,b01,b02,b11,b12,d[-6]),
+                  tmp_pkg$summary_fit[c(1:3,7:18),c(1,3:7)])
+
+colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
+rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
+                        "b0 - cohort1", "b0 - cohort2",
+                        "b1 - cohort1", "b1 - cohort2",
+                        "Urine Creatinine (log2)","Age of birth",
+                        "Parity (>0)","Child Sex (Male)","Education low",
+                        "Black/Hispanic Black","Non-Black Hispanic","Other")
+
+round(table_res,3) %>%
+  kbl(caption = paste0("Outcome: Birth weight z-score",
+                       " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+Notes:
+
++ **N_eff**: The effective sample size (a.k.a. ESS) represents the number of independent samples obtained from the chain, accounting for the autocorrelation. It is lower than the total number of samples in the chain when autocorrelation is present. By examining the point at which the autocorrelation drops below a certain threshold (usually 0.05), we can estimate the effective sample size and assess the efficiency of the MCMC algorithm. ESS can be increased tuning the thinning parameter. 
+
++ **Rhat**: Bayesian R-hat, also known as the *Gelman-Rubin* statistic or the *potential scale reduction factor* (PSRF), is a convergence diagnostic tool used in Bayesian data analysis. It is primarily used to assess whether multiple Markov chain Monte Carlo (MCMC) chains have converged to the same target distribution. An R-hat value close to 1 suggests that the chains have likely converged to the target distribution, indicating good mixing and convergence. On the other hand, if the R-hat value exceeds 1.1 or 1.2, it indicates that further iterations are needed to improve convergence. 
+
+## Trace plot 
+
+A Bayesian trace plot is a graphical representation used in Bayesian data analysis to visualize the posterior distribution of parameters in a Bayesian model. It provides a visual summary of the Markov chain Monte Carlo (MCMC) samples obtained from the posterior distribution. The x-axis represents the iteration number or the sample index, while the y-axis represents the parameter values. Each line in the plot corresponds to a specific MCMC chain, and multiple chains are often used to assess convergence and ensure reliable inference. The trace plot provides insights into several key aspects of the Bayesian analysis: convergence, mixing, stationarity and uncertainty. By examining the trace plot, analysts can diagnose potential issues with the MCMC sampling, detect problems with convergence or mixing, and make informed decisions regarding the validity and reliability of the Bayesian inference.
+
+```{r post_trace}
+stan_trace(tmp_pkg$fit, pars = c("W","b"),inc_warmup = T)
+```
+
+## Autocorrelation plot
+
+A Bayesian autocorrelation plot, also known as an autocorrelation function (ACF) plot, is a graphical tool used to assess the autocorrelation structure within an MCMC chain. It helps evaluate the degree of correlation between consecutive samples in the chain and provides insights into the mixing properties of the Markov chain Monte Carlo (MCMC) algorithm. The x-axis represents the lag or time interval between consecutive samples, while the y-axis represents the correlation coefficient. The correlation coefficient measures the linear relationship between two variables, in this case, the values of a parameter in the MCMC chain at different time intervals.
+
+```{r post_autocorr}
+stan_ac(tmp_pkg$fit, pars = c("W","b"))
+```
+
+## Density plot
+
+A Bayesian density plot, also known as a posterior density plot, is a graphical representation used in Bayesian data analysis to visualize the posterior distribution of parameters or quantities of interest. It provides a visual summary of the uncertainty and variability associated with the Bayesian estimates. The density plot represents the probability density function (PDF) of the posterior distribution. The x-axis represents the parameter values or the quantities of interest, while the y-axis represents the density or probability. The density plot displays the shape of the posterior distribution, indicating the most probable values and the range of uncertainty.
+
+```{r post_density}
+stan_dens(tmp_pkg$fit, pars = c("W","b"))
+```
+
+# BWQS model 
+
+```{r bwqs_run }
+DT_c1 = DT[cohort == 1]
+DT_c2 = DT[cohort == 2]
+
+cols_metals = c("UAs","UCd","UPb")
+DT_c1[,c("UAs_q","UCd_q","UPb_q") := lapply(.SD, function(i){
+  ecdf(i)(i)*4
+}), .SDcols = cols_metals]
+DT_c2[,c("UAs_q","UCd_q","UPb_q") := lapply(.SD, function(i){
+  ecdf(i)(i)*4
+}), .SDcols = cols_metals]
+
+# res_DT = bwqs(formula = y ~ log2_creatinine + age_birth + parity + childsex +
+#                 educ_low + race_eth_2 + race_eth_3 + race_eth_4,
+#               mix_name = c("UAs_q","UCd_q","UPb_q"),
+#               data = DT,
+#               q = NULL, 
+#               Dalp = c(1,1,1),
+#               chains = 1000,
+#               thin = 1,
+#               seed = 123,
+#               c_int = c(0.025, 0.975),
+#               family = "gaussian")
+# 
+# res_DT_c1 = bwqs(formula = y ~ log2_creatinine + age_birth + parity + childsex +
+#                 educ_low + race_eth_2 + race_eth_3 + race_eth_4,
+#               mix_name = c("UAs_q","UCd_q","UPb_q"),
+#               data = DT_c1,
+#               q = NULL, 
+#               Dalp = c(1,1,1),
+#               chains = 1000,
+#               thin = 1,
+#               seed = 123,
+#               c_int = c(0.025, 0.975),
+#               family = "gaussian")
+# 
+# res_DT_c2 = bwqs(formula = y ~ log2_creatinine + age_birth + parity + childsex +
+#                 educ_low + race_eth_2 + race_eth_3 + race_eth_4,
+#               mix_name = c("UAs_q","UCd_q","UPb_q"),
+#               data = DT_c2,
+#               q = NULL, 
+#               Dalp = c(1,1,1),
+#               chains = 1000,
+#               thin = 1,
+#               seed = 123,
+#               c_int = c(0.025, 0.975),
+#               family = "gaussian")
+# 
+# bwqs_list = vector("list",3)
+# names(bwqs_list) = c("overall","C1","C2")
+# bwqs_list$overall = bwqs_results$overall$summary_fit
+# bwqs_list$C1 = bwqs_results$C1$summary_fit
+# bwqs_list$C2 = bwqs_results$C2$summary_fit
+# saveRDS(bwqs_list,"bwqs_results_workshop.rds")
+bwqs_results = readRDS("bwqs_results_workshop.rds")
+```
+
+## Overall analysis
+
+```{r}
+table_res = cbind(real_value = c(w,NA,NA,d[-6]),
+                  bwqs_results$overall$summary_fit[c(11:13,1:10),c(1,3:7)])
+
+colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
+rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
+                        "b0","b1",
+                        "Urine Creatinine (log2)","Age of birth",
+                        "Parity (>0)","Child Sex (Male)","Education low",
+                        "Black/Hispanic Black","Non-Black Hispanic","Other")
+
+round(table_res,3) %>%
+  kbl(caption = paste0("Outcome: Birth weight z-score",
+                       " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+
+
+
+## Cohort 1 analysis
+
+```{r}
+table_res = cbind(real_value = c(w,b01,b11,d[-6]),
+                  bwqs_results$C1$summary_fit[c(11:13,1:10),c(1,3:7)])
+
+colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
+rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
+                        "b0","b1",
+                        "Urine Creatinine (log2)","Age of birth",
+                        "Parity (>0)","Child Sex (Male)","Education low",
+                        "Black/Hispanic Black","Non-Black Hispanic","Other")
+
+round(table_res,3) %>%
+  kbl(caption = paste0("Outcome: Birth weight z-score",
+                       " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+## Cohort 2 analysis
+
+```{r}
+table_res = cbind(real_value = c(w,b02,b12,d[-6]),
+                  bwqs_results$C2$summary_fit[c(11:13,1:10),c(1,3:7)])
+
+colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
+rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
+                        "b0","b1",
+                        "Urine Creatinine (log2)","Age of birth",
+                        "Parity (>0)","Child Sex (Male)","Education low",
+                        "Black/Hispanic Black","Non-Black Hispanic","Other")
+
+round(table_res,3) %>%
+  kbl(caption = paste0("Outcome: Birth weight z-score",
+                       " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+
+
+
+
