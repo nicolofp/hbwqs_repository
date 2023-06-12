@@ -21,6 +21,9 @@ library(BWQS)
 library(rstan)
 library(MASS)
 library(fastDummies)
+library(ggpubr)
+library(gridExtra)
+library(MESS)
 ```
 
 # Synthetic dataset
@@ -265,7 +268,7 @@ bwqs_results = readRDS("bwqs_results_workshop.rds")
 
 ```{r}
 table_res = cbind(real_value = c(w,NA,NA,d[-6]),
-                  bwqs_results$overall$summary_fit[c(11:13,1:10),c(1,3:7)])
+                  bwqs_results$overall[c(11:13,1:10),c(1,3:7)])
 
 colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
 rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
@@ -280,16 +283,11 @@ round(table_res,3) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
 
-
-
-
-
-
 ## Cohort 1 analysis
 
 ```{r}
 table_res = cbind(real_value = c(w,b01,b11,d[-6]),
-                  bwqs_results$C1$summary_fit[c(11:13,1:10),c(1,3:7)])
+                  bwqs_results$C1[c(11:13,1:10),c(1,3:7)])
 
 colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
 rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
@@ -309,7 +307,7 @@ round(table_res,3) %>%
 
 ```{r}
 table_res = cbind(real_value = c(w,b02,b12,d[-6]),
-                  bwqs_results$C2$summary_fit[c(11:13,1:10),c(1,3:7)])
+                  bwqs_results$C2[c(11:13,1:10),c(1,3:7)])
 
 colnames(table_res) = c("Real","Mean","Sd","2.5%","97.5%","N_eff","Rhat")
 rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
@@ -324,8 +322,152 @@ round(table_res,3) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
 
+# Plot 
 
+```{r, fig.align="center",fig.width=9,fig.height=3}
+metals = c("UAs_q","UCd_q","UPb_q")
 
+y = DT_c1$y
+bwqs = as.vector(as.matrix(DT_c1[,metals,with = F])%*%unlist(bwqs_results$C1[11:13,1]))
+dt1 = data.table(bwqs, y)
+plot1_l = ggplot(data = dt1, aes(x = bwqs, y = y))  +
+  geom_point(color = "grey71") +
+  geom_abline(aes(slope = bwqs_results$overall[2,1],
+                  intercept = bwqs_results$overall[1,1],
+                  color = "red",linetype = "solid"), size = 1) +
+  geom_abline(aes(slope = bwqs_results$C1[2,1],
+                  intercept = bwqs_results$C1[1,1],
+                  color = "blue",linetype = "dotdash"), size = 1) +
+  geom_abline(aes(slope = tmp_pkg$summary_fit[9,1], 
+                  intercept = tmp_pkg$summary_fit[7,1], 
+                  color = "black",linetype = "dashed"), size = 1) +
+  scale_color_identity(name = "",
+                       breaks = c("red", "blue", "black"),
+                       labels = c("Overall BWQS", "Cohort BWQS", "HBWQS"),
+                       guide = "legend") +
+  guides(colour = guide_legend(override.aes = list(linetype = c("twodash",
+                                                                "dotdash",
+                                                                "solid")))) +
+  scale_linetype(guide = "none") +
+  theme_bw() +
+  xlab("BWQS Index") +
+  ylab("Birth weight z-score") +
+  ylim(-3, 3) +
+  xlim(0,4) +
+  labs(title = "Hiearchical BWQS", subtitle = "Cohort1 - HBWQS, BWQS, Overall BWQS") +
+  theme(plot.title = element_text(hjust = 0.5),
+         axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        plot.subtitle = element_text(hjust = 0.5))
 
+plot1 = ggplot(data = dt1, aes(x = bwqs, y = y))  +
+  geom_point(color = "grey71") +
+  geom_abline(aes(slope = bwqs_results$overall[2,1],
+                  intercept = bwqs_results$overall[1,1],
+                  color = "red",linetype = "solid"), size = 1) +
+  geom_abline(aes(slope = bwqs_results$C1[2,1],
+                  intercept = bwqs_results$C1[1,1],
+                  color = "blue",linetype = "dotdash"), size = 1) +
+  geom_abline(aes(slope = tmp_pkg$summary_fit[9,1], 
+                  intercept = tmp_pkg$summary_fit[7,1], 
+                  color = "black",linetype = "dashed"), size = 1) +
+   scale_color_identity(name = "",
+                       breaks = c("red", "blue", "black"),
+                       labels = c("Overall BWQS", "Cohort BWQS", "HBWQS"),
+                       guide = "legend") +
+  guides(colour = guide_legend(override.aes = list(linetype = c("twodash",
+                                                                "dotdash",
+                                                                "solid")))) +
+  scale_linetype(guide = "none") +
+  theme_bw() +
+  xlab("BWQS Index") +
+  ylab("Birth weight z-score") +
+  ylim(-3, 3) +
+  xlim(0,4) +
+  labs(title = paste0("Hiearchical BWQS - Cohort 1"), 
+       subtitle = "Cohort 1 - HBWQS, BWQS, Overall BWQS") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+         axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.position = "none")
 
+## Cohort 2
+y = DT_c2$y
+bwqs = as.vector(as.matrix(DT_c2[,metals,with = F])%*%unlist(bwqs_results$C2[11:13,1]))
+dt2 = data.table(bwqs, y)
+plot2 = ggplot(data = dt2, aes(x = bwqs, y = y))  +
+  geom_point(color = "grey71") +
+  geom_abline(aes(slope = bwqs_results$overall[2,1],
+                  intercept = bwqs_results$overall[1,1],
+                  color = "red",linetype = "solid"), size = 1) +
+  geom_abline(aes(slope = bwqs_results$C2[2,1],
+                  intercept = bwqs_results$C2[1,1],
+                  color = "blue",linetype = "dotdash"), size = 1) +
+  geom_abline(aes(slope = tmp_pkg$summary_fit[10,1], 
+                  intercept = tmp_pkg$summary_fit[8,1], 
+                  color = "black",linetype = "dashed"), size = 1) +
+  scale_color_identity(name = "",
+                       breaks = c("red", "blue", "black"),
+                       labels = c("Overall BWQS", "Cohort BWQS", "HBWQS"),
+                       guide = "legend") +
+  guides(colour = guide_legend(override.aes = list(linetype = c("twodash",
+                                                                "dotdash",
+                                                                "solid")))) +
+  scale_linetype(guide = "none") +
+  theme_bw() +
+  xlab("BWQS Index") +
+  ylab("Birth weight z-score") +
+  ylim(-3, 3) +
+  xlim(0,4) +
+  labs(title = paste0("Hiearchical BWQS - Cohort 2"), 
+       subtitle = "Cohort 2 - HBWQS, BWQS, Overall BWQS") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+         axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.position = "none")
+
+# Extract the legend. Returns a gtable
+leg <- get_legend(plot1_l)
+
+# Convert to a ggplot and print
+leg_plot = as_ggplot(leg)# + ggtitle("Legend") + theme(plot.title = element_text(hjust = 0.5))
+
+weight_dt = data.table(model = rep(c("HBWQS","Overall","Cohort 1","Cohort 2"),each = 3),
+                       metals = rep(c("Arsenic","Cadmium","Lead"),4),
+                       value = c(tmp_pkg$summary_fit[1:3,1],
+                                 bwqs_results$overall[11:13,1],
+                                 bwqs_results$C1[11:13,1],
+                                 bwqs_results$C2[11:13,1]),
+                       m_lab = c(round_percent(tmp_pkg$summary_fit[1:3,1]),
+                                 round_percent(bwqs_results$overall[11:13,1]),
+                                 round_percent(bwqs_results$C1[11:13,1]),
+                                 round_percent(bwqs_results$C2[11:13,1])))
+
+weight_dt[, model := factor(model,levels = c("HBWQS","Overall","Cohort 1","Cohort 2"),ordered = T)]
+
+# Stacked + percent
+w_plot = ggplot(weight_dt, aes(fill=metals, y=value, x=model,
+                      label = paste0(m_lab,"%"))) +
+  geom_bar(position="fill", stat="identity") +
+  theme_bw() +
+  labs(title = paste0("Weights Birth Weight z-score")) +
+  scale_y_continuous(labels = scales::percent) +
+  xlab("") + 
+  ylab("") +
+  geom_text(size = 4, position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("#F0E442", "#CC79A7", "#0072B2")) +
+  theme(plot.title = element_text(hjust = 0.5, size = 18),
+        plot.subtitle = element_text(hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.title = element_blank())  
+
+grid.arrange(plot1,plot2,leg_plot, ncol = 3, widths = c(2, 2, 1))
+```
+
+```{r}
+w_plot
+```
 
