@@ -48,13 +48,13 @@ library(MESS)
 
 # Synthetic dataset
 
-**Dataset Name**: Birth weight z-score and urinary metal mixture dataset
+**Dataset Name**: Gestational age acceleration and urinary metal mixture dataset
 
-**Description**: The birth weight z-score and urinary metal mixture dataset is a synthetic dataset consisting of information related to birth weight z-scores and the presence of various metals detected in urine samples, along with additional demographic and health-related factors. The dataset is divided into two separate cohorts to represent different groups or populations.
+**Description**: The gestational age acceleration and urinary metal mixture dataset is a synthetic dataset consisting of information related to Gestational age acceleration and the presence of various metals detected in urine samples, along with additional demographic and health-related factors. The dataset is divided into two separate cohorts to represent different groups or populations.
 
 **Variables**:
 
-1. *Birth Weight Z-Score*: A continuous variable representing the standardized birth weight, calculated relative to a reference population. This variable is the outcome of the analysis.
+1. *Gestational age acceleration*: A continuous variable representing the gestational age acceleration to the reference population. This variable is the outcome of the analysis.
 
 2. *Metals Detected in Urine*: A set of continuous variables (quartiles) indicating the levels of different metals detected in urine samples. This include  lead, cadmium, arsenic, and others. Each metal will have its own measure.
 
@@ -191,7 +191,7 @@ rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
                         "Black/Hispanic Black","Non-Black Hispanic","Other")
 
 round(table_res,3) %>%
-  kbl(caption = paste0("Outcome: Birth weight z-score",
+  kbl(caption = paste0("Outcome: Gestational age acceleration",
                        " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
@@ -309,7 +309,7 @@ rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
                         "Black/Hispanic Black","Non-Black Hispanic","Other")
 
 round(table_res,3) %>%
-  kbl(caption = paste0("Outcome: Birth weight z-score",
+  kbl(caption = paste0("Outcome: Gestational age acceleration",
                        " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
@@ -328,7 +328,7 @@ rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
                         "Black/Hispanic Black","Non-Black Hispanic","Other")
 
 round(table_res,3) %>%
-  kbl(caption = paste0("Outcome: Birth weight z-score",
+  kbl(caption = paste0("Outcome: Gestational age acceleration",
                        " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
@@ -348,7 +348,7 @@ rownames(table_res) = c("W - Arsenic","W - Cadmium","W - Lead",
                         "Black/Hispanic Black","Non-Black Hispanic","Other")
 
 round(table_res,3) %>%
-  kbl(caption = paste0("Outcome: Birth weight z-score",
+  kbl(caption = paste0("Outcome: Gestational age acceleration",
                        " - Chain: 1000 - Burnin: 500 - Thinning: 1")) %>%
   kable_classic(full_width = F, html_font = "Cambria")
 ```
@@ -382,7 +382,7 @@ plot1_l = ggplot(data = dt1, aes(x = bwqs, y = y))  +
   scale_linetype(guide = "none") +
   theme_bw() +
   xlab("BWQS Index") +
-  ylab("Birth weight z-score") +
+  ylab("Gestational age acceleration") +
   ylim(-3, 3) +
   xlim(0,4) +
   labs(title = "Hiearchical BWQS", subtitle = "Cohort1 - HBWQS, BWQS, Overall BWQS") +
@@ -412,7 +412,7 @@ plot1 = ggplot(data = dt1, aes(x = bwqs, y = y))  +
   scale_linetype(guide = "none") +
   theme_bw() +
   xlab("BWQS Index") +
-  ylab("Birth weight z-score") +
+  ylab("Gestational age acceleration") +
   ylim(-3, 3) +
   xlim(0,4) +
   labs(title = paste0("Hiearchical BWQS - Cohort 1"), 
@@ -448,7 +448,7 @@ plot2 = ggplot(data = dt2, aes(x = bwqs, y = y))  +
   scale_linetype(guide = "none") +
   theme_bw() +
   xlab("BWQS Index") +
-  ylab("Birth weight z-score") +
+  ylab("Gestational age acceleration") +
   ylim(-3, 3) +
   xlim(0,4) +
   labs(title = paste0("Hiearchical BWQS - Cohort 2"), 
@@ -483,7 +483,7 @@ w_plot = ggplot(weight_dt, aes(fill=metals, y=value, x=model,
                       label = paste0(m_lab,"%"))) +
   geom_bar(position="fill", stat="identity") +
   theme_bw() +
-  labs(title = paste0("Weights Birth Weight z-score")) +
+  labs(title = paste0("Weights Gestational age acceleration")) +
   scale_y_continuous(labels = scales::percent) +
   xlab("") + 
   ylab("") +
